@@ -243,7 +243,7 @@ def generate_sequences(df, well_list, feature_names, sequence_length=51, perc_ov
    
     if scaler is None:
         feature_scaling = [f for f in feature_names if f != 'NM_M']
-        scaler = RobustScaler().fit(df.ix[well_list][feature_scaling].values)
+        scaler = RobustScaler().fit(df.loc[well_list][feature_scaling].values)
     
     X = np.zeros((sequence_length, len(feature_names), 1))
     IDX_abs_pos = np.zeros((1,1))
@@ -252,14 +252,14 @@ def generate_sequences(df, well_list, feature_names, sequence_length=51, perc_ov
         
     
     for well in well_list:
-        x = df.ix[well][feature_names].values
+        x = df.loc[well][feature_names].values
         # 5th index is for NM_M feature
         nm_m = np.expand_dims(x[:,5],1)
         x_ = RobustScaler().fit_transform(np.hstack((x[:,:5],np.expand_dims(x[:,-1],1))))
         x = np.hstack((x_[:,:5],nm_m,np.expand_dims(x_[:,-1],1)))
         #x = scaler.transform(x)
         if with_labels is True:
-            y = df.ix[well]['Facies'].values
+            y = df.loc[well]['Facies'].values
             
         # find sequences that can be fully extracted
         # for the last one take the exact final piece

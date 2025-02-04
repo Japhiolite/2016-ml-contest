@@ -184,41 +184,33 @@ def _get_params_inception(params, path, module_position=0):
     else:
         raise ValueError('Inception path %s invalid' % path)
         
-        
+
 def inception_net(x, dropout_fc, is_training, dropout_conv=1, clip_norm=1e-1):
-    ''' '''
-    # DEPTHWISE CONV (NOT IN USE!!!!!!!)
-    with tf.variable_scope('depthwise') as scope:
-        channel_multiplier = 2
-        xshape = x.get_shape().as_list()
-        std = 1.0 / np.sqrt(xshape[2]*xshape[3])
-        kernel = tf.Variable(tf.truncated_normal([1, 1, xshape[3], channel_multiplier], 
-                                             stddev=std),name='kernel')       
-        biases = tf.Variable(tf.zeros([xshape[3]*channel_multiplier]))
-        xdw = _conv1d_depthwise(x, kernel, biases, is_training=is_training, strides=1)
-        xdw = tf.nn.dropout(xdw, dropout_conv)
+    ''' Inception network implementation '''
     
+    # DEPTHWISE CONV (NOT IN USE!!!!!!!)
+    channel_multiplier = 2
+    xshape = tf.shape(x)
+    std = 1.0 / np.sqrt(xshape[2] * xshape[3])
+    kernel = tf.Variable(tf.random.truncated_normal([1, 1, xshape[3], channel_multiplier], stddev=std), name='kernel')
+    biases = tf.Variable(tf.zeros([xshape[3] * channel_multiplier]))
+    xdw = _conv1d_depthwise(x, kernel, biases, is_training=is_training, strides=1)
+    xdw = tf.nn.dropout(xdw, dropout_conv)
     
     # INCEPTION 1
-    with tf.variable_scope('inception1') as scope:
-        incept1 = _inception_module(x, is_training, dropout_conv=dropout_conv, module_position=0)
-        
+    incept1 = _inception_module(x, is_training, dropout_conv=dropout_conv, module_position=0)
         
     # POOLING 1
     pool1 = _pool1d(incept1, k=2, strides=2)
     pool1 = tf.nn.dropout(pool1, dropout_conv)
     
     # INCEPTION 2
-    with tf.variable_scope('inception2') as scope:
-        incept2 = _inception_module(pool1, is_training,dropout_conv=dropout_conv, module_position=1)
-        incept2 = tf.nn.dropout(incept2, dropout_conv)
+    incept2 = _inception_module(pool1, is_training, dropout_conv=dropout_conv, module_position=1)
+    incept2 = tf.nn.dropout(incept2, dropout_conv)
      
-    
     # INCEPTION 3
-    with tf.variable_scope('inception3') as scope:
-        incept3 = _inception_module(incept2, is_training, dropout_conv=dropout_conv, module_position=2)
+    incept3 = _inception_module(incept2, is_training, dropout_conv=dropout_conv, module_position=2)
         
-                
     # POOLING 3
     pool3 = _pool1d(incept3, k=2, strides=2)
     pool3 = tf.nn.dropout(pool3, dropout_conv)
@@ -226,35 +218,97 @@ def inception_net(x, dropout_fc, is_training, dropout_conv=1, clip_norm=1e-1):
     # FLATTEN
     flatten = _reshape_Conv_to_FullyConnected(pool3)
     
-    
     # FULLY CONNECTED 1
-    with tf.variable_scope('fc1') as scope:
-        n1 = 140 #112
-        # Weighting and activation (with dropout)
-        dim = flatten.get_shape()[1].value
-        #print('Number of inputs to 1st fully connected layer: %d' % dim)
-        weights = tf.Variable(tf.truncated_normal([dim,n1], stddev=1e-3))
-        weights_rn = tf.clip_by_norm(weights, clip_norm, axes=[0,1], name='clip1')
-        biases = tf.Variable(tf.fill([n1],0.1))
-        fc1 = _linear_activation(flatten, weights_rn, biases, is_training=is_training, keep_prob=dropout_fc, name=scope.name)
+    n1 = 140
+    dim = flatten.shape[1]
+    weights_fc1 = tf.Variable(tf.random.truncated_normal([dim, n1], stddev=1e-3))
+    weights_rn_fc1 = tf.clip_by_norm(weights_fc1, clip_norm, axes=[0,1], name='clip1')
+    biases_fc1 = tf.Variable(tf.fill([n1], 0.1))
+    fc1 = _linear_activation(flatten, weights_rn_fc1, biases_fc1, is_training=is_training, keep_prob=dropout_fc)
+
+    # FULLY CONNECTED 2
+    n2 = 70
+    weights_fc2 = tf.Variable(tf.random.truncated_normal([n1, n2], stddev=1e-3))
+    weights_rn_fc2 = tf.clip_by_norm(weights_fc2, clip_norm, axes=[0,1], name='clip2')
+    biases_fc2 = tf.Variable(tf.fill([n2], 0.1))
+    fc2 = _linear_activation(fc1, weights_rn_fc2, biases_fc2, is_training=is_training, keep_prob=dropout_fc)
+
+    # OUTPUT 
+    weights_output = tf.Variable(tf.random.truncated_normal([n2, N_CLASSES], stddev=1e-3))
+    biases_output = tf.Variable(tf.fill([N_CLASSES], 0.1))
+    output = tf.add(tf.matmul(fc2, weights_output), biases_output)
+
+    return output        
+# def inception_net(x, dropout_fc, is_training, dropout_conv=1, clip_norm=1e-1):
+#     ''' '''
+#     # DEPTHWISE CONV (NOT IN USE!!!!!!!)
+#     with tf.variable_scope('depthwise') as scope:
+#         channel_multiplier = 2
+#         xshape = x.get_shape().as_list()
+#         std = 1.0 / np.sqrt(xshape[2]*xshape[3])
+#         kernel = tf.Variable(tf.truncated_normal([1, 1, xshape[3], channel_multiplier], 
+#                                              stddev=std),name='kernel')       
+#         biases = tf.Variable(tf.zeros([xshape[3]*channel_multiplier]))
+#         xdw = _conv1d_depthwise(x, kernel, biases, is_training=is_training, strides=1)
+#         xdw = tf.nn.dropout(xdw, dropout_conv)
+    
+    
+#     # INCEPTION 1
+#     with tf.variable_scope('inception1') as scope:
+#         incept1 = _inception_module(x, is_training, dropout_conv=dropout_conv, module_position=0)
+        
+        
+#     # POOLING 1
+#     pool1 = _pool1d(incept1, k=2, strides=2)
+#     pool1 = tf.nn.dropout(pool1, dropout_conv)
+    
+#     # INCEPTION 2
+#     with tf.variable_scope('inception2') as scope:
+#         incept2 = _inception_module(pool1, is_training,dropout_conv=dropout_conv, module_position=1)
+#         incept2 = tf.nn.dropout(incept2, dropout_conv)
+     
+    
+#     # INCEPTION 3
+#     with tf.variable_scope('inception3') as scope:
+#         incept3 = _inception_module(incept2, is_training, dropout_conv=dropout_conv, module_position=2)
+        
+                
+#     # POOLING 3
+#     pool3 = _pool1d(incept3, k=2, strides=2)
+#     pool3 = tf.nn.dropout(pool3, dropout_conv)
+       
+#     # FLATTEN
+#     flatten = _reshape_Conv_to_FullyConnected(pool3)
+    
+    
+#     # FULLY CONNECTED 1
+#     with tf.variable_scope('fc1') as scope:
+#         n1 = 140 #112
+#         # Weighting and activation (with dropout)
+#         dim = flatten.get_shape()[1].value
+#         #print('Number of inputs to 1st fully connected layer: %d' % dim)
+#         weights = tf.Variable(tf.truncated_normal([dim,n1], stddev=1e-3))
+#         weights_rn = tf.clip_by_norm(weights, clip_norm, axes=[0,1], name='clip1')
+#         biases = tf.Variable(tf.fill([n1],0.1))
+#         fc1 = _linear_activation(flatten, weights_rn, biases, is_training=is_training, keep_prob=dropout_fc, name=scope.name)
 
         
-    # FULLY CONNECTED 2
-    with tf.variable_scope('fc2') as scope:
-        n2 = 70 #56     
-        weights = tf.Variable(tf.truncated_normal([n1,n2], stddev=1e-3))
-        weights_rn = tf.clip_by_norm(weights, clip_norm, axes=[0,1], name='clip2')
-        biases = tf.Variable(tf.fill([n2],0.1))
-        fc2 = _linear_activation(fc1, weights_rn, biases, is_training=is_training, keep_prob=dropout_fc, name=scope.name)
+#     # FULLY CONNECTED 2
+#     with tf.variable_scope('fc2') as scope:
+#         n2 = 70 #56     
+#         weights = tf.Variable(tf.truncated_normal([n1,n2], stddev=1e-3))
+#         weights_rn = tf.clip_by_norm(weights, clip_norm, axes=[0,1], name='clip2')
+#         biases = tf.Variable(tf.fill([n2],0.1))
+#         fc2 = _linear_activation(fc1, weights_rn, biases, is_training=is_training, keep_prob=dropout_fc, name=scope.name)
 
                    
-    # OUTPUT 
-    with tf.variable_scope('output') as scope:
-        weights = tf.Variable(tf.truncated_normal([n2,N_CLASSES],stddev=1e-3))
-        biases = tf.Variable(tf.fill([N_CLASSES],0.1))
-        output = tf.add(tf.matmul(fc2, weights), biases)
+#     # OUTPUT 
+#     with tf.variable_scope('output') as scope:
+#         weights = tf.Variable(tf.truncated_normal([n2,N_CLASSES],stddev=1e-3))
+#         biases = tf.Variable(tf.fill([N_CLASSES],0.1))
+#         output = tf.add(tf.matmul(fc2, weights), biases)
         
-    return output
+#     return output
 
 #norm = tf.sqrt(tf.reduce_sum(tf.square(weights), 1)
 #weights_renormed = weights * tf.expand_dims(clip_norm / tf.maximum(clip_norm, norms), 1) 
